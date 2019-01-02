@@ -190,47 +190,94 @@ void setup() {
 
 
 //************************************************************
+// ================================================================
+// ===                    MAIN PROGRAM LOOP                     ===
+// ================================================================
+
 void loop() {
-  // if programming MPU failed, don't try to do anything
-  if (!dmpReady) return;
-  
-  if ( WiFi.status() != WL_CONNECTED){
-    Serial.println("Connection to SSID lost");
-    Udp.stop();
-    connectToWifi(); //just in case it didn't connect
-  }
-  
-  int packetSize = Udp.parsePacket(); // Triggered when receiving a UDP packet from the computer
-  if (packetSize){
-      PacketHandler();  
-  }
-
-
-  //option 1: loop fifo read, handle UDP interrupts when "caught up"
-  //option 2: loop check for UDP interrupts when 
-  
-
-  if (Udp.remoteIP())                          // Start sending the sensor values when we know the IP Address of the computer.
-  {    
-    msg.beginMessage("sensors");
-
-
-
-
-
+    // if programming MPU failed, don't try to do anything
+    if (!dmpReady) return;
     
-    //pinReading = 
-    //Serial.print(pinReading);
-    //Serial.print(", ");
-    
-   
-    //Serial.println("");
-    
-    sendUDP();
-    delay(50);
-  }
+    if ( WiFi.status() != WL_CONNECTED){
+      Serial.println("Connection to SSID lost");
+      Udp.stop();
+      connectToWifi(); //just in case it didn't connect
+    }
+
+    // wait for MPU interrupt or extra packet(s) available
+    // Handle UDP interrups in this phase.
+    while (!mpuInterrupt && fifoCount < packetSize) {
+        if (mpuInterrupt && fifoCount < packetSize) {
+          // try to get out of the infinite loop 
+          fifoCount = mpu.getFIFOCount();
+        }  
+
+
+        int packetSize = Udp.parsePacket(); // Triggered when receiving a UDP packet from the computer
+        if (packetSize){
+            PacketHandler();  
+        }
+    }
+
+    // reset interrupt flag and get INT_STATUS byte
+    mpuInterrupt = false;
+    mpuIntStatus = mpu.getIntStatus();
+
+    // get current FIFO count
+    fifoCount = mpu.getFIFOCount();
+
+    // check for overflow (this should never happen unless our code is too inefficient)
+    if ((mpuIntStatus & _BV(MPU6050_INTERRUPT_FIFO_OFLOW_BIT)) || fifoCount >= 1024) {
+        // reset so we can continue cleanly
+        mpu.resetFIFO();
+        fifoCount = mpu.getFIFOCount();
+        Serial.println(F("FIFO overflow!"));
+
+    // otherwise, check for DMP data ready interrupt (this should happen frequently)
+    } else if (mpuIntStatus & _BV(MPU6050_INTERRUPT_DMP_INT_BIT)) {
+        // wait for correct available data length, should be a VERY short wait
+        while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
+
+        // read a packet from FIFO
+        mpu.getFIFOBytes(fifoBuffer, packetSize);
+        
+        // track FIFO count here in case there is > 1 packet available
+        // (this lets us immediately read more without waiting for an interrupt)
+        fifoCount -= packetSize;
+
+
+        //OUTPUT 
+        #ifdef OUTPUT_READABLE_QUATERNION
+            // display quaternion values in easy matrix form: w x y z
+            mpu.dmpGetQuaternion(&q, fifoBuffer);
+            Serial.print("quat\t");
+            Serial.print(q.w);
+            Serial.print("\t");
+            Serial.print(q.x);
+            Serial.print("\t");
+            Serial.print(q.y);
+            Serial.print("\t");
+            Serial.println(q.z);
+        #endif
+
+
+        if (Udp.remoteIP())                          // Start sending the sensor values when we know the IP Address of the computer.
+        {    
+          msg.beginMessage("gyro");
+          msg.addArgInt32(q.w);
+          msg.addArgInt32(q.x);    
+          msg.addArgInt32(q.y);    
+          msg.addArgInt32(q.z);
+               
+          sendUDP();
+          delay(50);
+        }
+        
+        // blink LED to indicate activity
+        blinkState = !blinkState;
+        digitalWrite(LED_PIN, blinkState);
+    }
 }
-
 
 
 //************************************************************
