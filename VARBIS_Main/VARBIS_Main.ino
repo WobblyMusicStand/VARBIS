@@ -7,8 +7,6 @@
 #include "I2Cdev.h"
 #include "MPU6050_6Axis_MotionApps20.h"
 
-
-
 #include <SPI.h>
 #include <WiFi101_OSC.h>
 #include <WiFiUdp.h>
@@ -16,7 +14,24 @@
 #include "OSCMessage.h"
 
 
-//WIFI INIT
+
+// ******************* DEFINITIONS **************************
+
+#define INTERRUPT_PIN 0  // use pin 2 on Arduino Uno & most boards //use pin 0 on MKR family boards
+
+#define LED_PIN 6 // (MKR1000 is 6)
+bool blinkState = false;
+
+//int pin_Out_BattSwitch = 0;             // Pin to control transistor
+//int pin_In_Battery = A5;
+
+int pinReading = 0;
+int Vin= 3.3;
+const int baud_rate = 9600;
+
+
+
+//WIFI INIT and DEFINITIONS
 //************************************************************
 //** CHECK & CHANGE THESE!!!!!
 
@@ -32,21 +47,11 @@ int status = WL_IDLE_STATUS;
 char packetBuffer[UDP_TX_PACKET_MAX_SIZE];
 char ReplyBuffer[] = "acknowledge";
 
-
-//int pin_Out_BattSwitch = 0;             // Pin to control transistor
-//int pin_In_Battery = A5;
-
-int pin_LED = 6;
-
-int pinReading = 0;
-int Vin= 3.3;
-const int baud_rate = 9600;
-
 OSCMessage msg;                         // Create new osc message
 OSCMessage resp;
 WiFiUDP Udp;
 
-//MPU6050 INIT
+//MPU6050 INIT and DEFINITIONS
 //************************************************************
 
 MPU6050 mpu;
@@ -59,13 +64,10 @@ MPU6050 mpu;
 
 #define OUTPUT_READABLE_QUATERNION
 
+// redefined macro, (not included in all arduino builds.
 #ifndef _BV
   #define _BV(bit)  (1 << (bit))
 #endif
-
-#define INTERRUPT_PIN 0  // use pin 2 on Arduino Uno & most boards //use pin 0 on MKR family boards
-#define LED_PIN 6 // (MKR1000 is 6)
-bool blinkState = false;
 
 // MPU control/status vars
 bool dmpReady = false;  // set true if DMP init was successful
@@ -77,6 +79,8 @@ uint8_t fifoBuffer[64]; // FIFO storage buffer
 
 // orientation/motion vars
 Quaternion q;           // [w, x, y, z]         quaternion container
+
+/* //possibly unneeded.
 VectorInt16 aa;         // [x, y, z]            accel sensor measurements
 VectorInt16 aaReal;     // [x, y, z]            gravity-free accel sensor measurements
 VectorInt16 aaWorld;    // [x, y, z]            world-frame accel sensor measurements
@@ -86,7 +90,7 @@ float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gra
 
 // packet structure for InvenSense teapot demo
 uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
-
+*/
 
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
@@ -99,7 +103,7 @@ void dmpDataReady() {
 
 
 
-
+// SETUP
 //************************************************************
 void setup() {
     // join I2C bus (I2Cdev library doesn't do this automatically)
@@ -131,7 +135,7 @@ void setup() {
     Serial.println(F("Testing device connections..."));
     Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
 
-    // wait for ready
+    // wait for ready removed to speedup startup.
     /*Serial.println(F("\nSend any character to begin DMP programming and demo: "));
     while (Serial.available() && Serial.read()); // empty buffer
     while (!Serial.available());                 // wait for data
@@ -141,6 +145,7 @@ void setup() {
     Serial.println(F("Initializing DMP..."));
     devStatus = mpu.dmpInitialize();
 
+    //TODO Calibrate.
     // supply your own gyro offsets here, scaled for min sensitivity
     mpu.setXGyroOffset(220);
     mpu.setYGyroOffset(76);
@@ -176,7 +181,7 @@ void setup() {
         Serial.println(F(")"));
     }
     
-  pinMode(pin_LED,OUTPUT);
+  pinMode(LED_PIN,OUTPUT);
   //pinMode(pin_Out_BattSwitch, OUTPUT);
   
 
@@ -225,6 +230,7 @@ void loop() {
 
     // get current FIFO count
     fifoCount = mpu.getFIFOCount();
+
 
     // check for overflow (this should never happen unless our code is too inefficient)
     if ((mpuIntStatus & _BV(MPU6050_INTERRUPT_FIFO_OFLOW_BIT)) || fifoCount >= 1024) {
@@ -336,16 +342,16 @@ void printWifiStatus() {
 
 void blinkLED() {
   for(int i = 0; i < 2; i++){
-    digitalWrite(pin_LED, HIGH);  
+    digitalWrite(LED_PIN, HIGH);  
     delay(500);             
-    digitalWrite(pin_LED, LOW);   
+    digitalWrite(LED_PIN, LOW);   
     delay(500);              
   }
 }
 
 //************************************************************
 void connectToWifi() {
-  digitalWrite(pin_LED, LOW);
+  digitalWrite(LED_PIN, LOW);
     
   while ( WiFi.status() != WL_CONNECTED)      // Attempt to connect to WiFi network 
   {
@@ -353,11 +359,11 @@ void connectToWifi() {
     Serial.println(ssid);
     
     WiFi.begin(ssid, pass);                   // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
-    //WiFi.config(ip);                          
+    WiFi.config(ip);                          
     blinkLED();
   }
   
-  digitalWrite(pin_LED, HIGH);   
+  digitalWrite(LED_PIN, HIGH);   
   
   Serial.println("Connected to wifi");
   printWifiStatus();
