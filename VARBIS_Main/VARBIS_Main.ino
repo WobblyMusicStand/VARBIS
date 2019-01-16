@@ -1,4 +1,4 @@
-// VARBIS main program sketch for the Arduino MKR1000 and MPU-6050
+  // VARBIS main program sketch for the Arduino MKR1000 and MPU-6050
 // Adapted from the MPU6050_DMP6 demo sketch and RUBS_8plus_Summer sketches.
 // using the I2C device class (12Cdev), MPU6050 class, and DMP (MotionApps v2.0)
 // 2018-11-01
@@ -118,7 +118,8 @@ void setup() {
     // (115200 chosen because it is required for Teapot Demo output, but it's
     // really up to you depending on your project)
     Serial.begin(baud_rate);
-    while (!Serial); // wait for Leonardo enumeration, others continue immediately
+    //We remove this line, so that it will start up on battery
+    //while (!Serial); // wait for Leonardo enumeration, others continue immediately
 
     // NOTE: 8MHz or slower host processors, like the Teensy @ 3.3V or Arduino
     // Pro Mini running at 3.3V, cannot handle this baud rate reliably due to
@@ -251,33 +252,36 @@ void loop() {
         // (this lets us immediately read more without waiting for an interrupt)
         fifoCount -= packetSize;
 
-
-        //OUTPUT 
+      
         #ifdef OUTPUT_READABLE_QUATERNION
-            // display quaternion values in easy matrix form: w x y z
-            mpu.dmpGetQuaternion(&q, fifoBuffer);
-            Serial.print("quat\t");
-            Serial.print(q.w);
-            Serial.print("\t");
-            Serial.print(q.x);
-            Serial.print("\t");
-            Serial.print(q.y);
-            Serial.print("\t");
-            Serial.println(q.z);
+        
         #endif
-
-
+        
+        //OUTPUT 
         if (Udp.remoteIP())                          // Start sending the sensor values when we know the IP Address of the computer.
         {    
-          msg.beginMessage("gyro");
-          msg.addArgInt32(q.w);
-          msg.addArgInt32(q.x);    
-          msg.addArgInt32(q.y);    
-          msg.addArgInt32(q.z);
-               
+          #ifdef OUTPUT_READABLE_QUATERNION
+              // display quaternion values in easy matrix form: w x y z
+              mpu.dmpGetQuaternion(&q, fifoBuffer);
+              msg.beginMessage("quat");
+              Serial.print("Sending over WIFI:\t");
+              msg.addArgFloat(q.w);
+              Serial.print(q.w);
+              Serial.print("\t");
+              msg.addArgFloat(q.x);
+              Serial.print(q.x);
+              Serial.print("\t");
+              msg.addArgFloat(q.y);
+              Serial.print(q.y);
+              Serial.print("\t");
+              msg.addArgFloat(q.z);
+              Serial.println(q.z);
+          #endif
+
           sendUDP();
-          delay(50);
-        }
+          //TODO, fine-tune delay (if nessesary) to prevent network congestion while guaranteeing timely reads from the buffer.
+          //delay(50); causes issues reading from the FIFO buffer (6 reads before overflow)
+        }     
         
         // blink LED to indicate activity
         blinkState = !blinkState;
@@ -313,6 +317,9 @@ void PacketHandler() {
     if(contents == "connect") {
       sendConnectedMSG();
     } 
+    if(contents == "reset"){
+      //reset Arduino  
+    }
 }
 
 //************************************************************
@@ -359,7 +366,7 @@ void connectToWifi() {
     Serial.println(ssid);
     
     WiFi.begin(ssid, pass);                   // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
-    WiFi.config(ip);                          
+    //WiFi.config(ip);                          
     blinkLED();
   }
   
@@ -427,6 +434,7 @@ void sendConnectedMSG() {
 
 //************************************************************
 void read_gyro(){
+  //TODO, refactor MPU reads into helper?
   
   }
 
