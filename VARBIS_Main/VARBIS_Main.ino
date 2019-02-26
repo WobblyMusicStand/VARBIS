@@ -168,6 +168,9 @@ void dmpDataReady() {
 // ===                      INITIAL SETUP                       ===
 // ================================================================
 
+//Function pointer to the 0th address, we invoke this to cause a programatic reset.
+void(* resetFunc) (void) = 0;
+
 void setup() {
     // join I2C bus (I2Cdev library doesn't do this automatically)
     #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
@@ -363,7 +366,7 @@ void PacketHandler() {
       sendConnectedMSG();
     } 
     if(contents == "reset"){
-      //reset Arduino  
+      resetFunc(); //Function call to the 0th address, causes a system reset.
     }
 }
 
