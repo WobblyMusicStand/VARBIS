@@ -1,7 +1,31 @@
-  // VARBIS main program sketch for the Arduino MKR1000 and MPU-6050
+// VARBIS main program sketch for the Arduino MKR1000 and MPU-6050 written by Anders Grasdal
 // Adapted from the MPU6050_DMP6 demo sketch and RUBS_8plus_Summer sketches.
 // using the I2C device class (12Cdev), MPU6050 class, and DMP (MotionApps v2.0)
 // 2018-11-01
+
+/* ============================================
+I2Cdev device library code is placed under the MIT license
+Copyright (c) 2012 Jeff Rowberg
+Modifications 2018 Anders Grasdal
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+=============================================== */
 
 
 #include "I2Cdev.h"
@@ -15,7 +39,9 @@
 
 
 
-// ******************* DEFINITIONS **************************
+// ================================================================
+// ===                       DEFINITIONS                        ===
+// ================================================================
 
 #define INTERRUPT_PIN 0  // use pin 2 on Arduino Uno & most boards //use pin 0 on MKR family boards
 
@@ -30,11 +56,16 @@ int Vin= 3.3;
 const int baud_rate = 9600;
 
 
+// redefined macro, (not included in all arduino builds.
+#ifndef _BV
+  #define _BV(bit)  (1 << (bit))
+#endif
+
 
 //WIFI INIT and DEFINITIONS
 //************************************************************
-//** CHECK & CHANGE THESE!!!!!
 
+//** CHECK & CHANGE THESE!!!!!
 char ssid[] = "**********";                   // Computer with MAX/MSP must be in the same Network
 char pass[] = "**********";
 int pc_port = 8003;                             // Port opened on Computer ---- Ex. on MAX -> "udpreceive 8003" 8003 for Ziyian, 8004 for Emma
@@ -62,12 +93,42 @@ MPU6050 mpu;
    external interrupt #0 pin. On the Arduino MKR1000 this is digital I/O pin 0.
  * ========================================================================= */
 
-#define OUTPUT_READABLE_QUATERNION
+// uncomment "OUTPUT_READABLE_QUATERNION" if you want to see the actual
+// quaternion components in a [w, x, y, z] format (not best for parsing
+// on a remote host such as Processing or something though)
+//#define OUTPUT_READABLE_QUATERNION
 
-// redefined macro, (not included in all arduino builds.
-#ifndef _BV
-  #define _BV(bit)  (1 << (bit))
-#endif
+// uncomment "OUTPUT_READABLE_EULER" if you want to see Euler angles
+// (in degrees) calculated from the quaternions coming from the FIFO.
+// Note that Euler angles suffer from gimbal lock (for more info, see
+// http://en.wikipedia.org/wiki/Gimbal_lock)
+//#define OUTPUT_READABLE_EULER
+
+// uncomment "OUTPUT_READABLE_YAWPITCHROLL" if you want to see the yaw/
+// pitch/roll angles (in degrees) calculated from the quaternions coming
+// from the FIFO. Note this also requires gravity vector calculations.
+// Also note that yaw/pitch/roll angles suffer from gimbal lock (for
+// more info, see: http://en.wikipedia.org/wiki/Gimbal_lock)
+#define OUTPUT_READABLE_YAWPITCHROLL
+
+// uncomment "OUTPUT_READABLE_REALACCEL" if you want to see acceleration
+// components with gravity removed. This acceleration reference frame is
+// not compensated for orientation, so +X is always +X according to the
+// sensor, just without the effects of gravity. If you want acceleration
+// compensated for orientation, us OUTPUT_READABLE_WORLDACCEL instead.
+//#define OUTPUT_READABLE_REALACCEL
+
+// uncomment "OUTPUT_READABLE_WORLDACCEL" if you want to see acceleration
+// components with gravity removed and adjusted for the world frame of
+// reference (yaw is relative to initial orientation, since no magnetometer
+// is present in this case). Could be quite handy in some cases.
+//#define OUTPUT_READABLE_WORLDACCEL
+
+//****** NOT SUPPORTED OVER WIFI *******
+// uncomment "OUTPUT_TEAPOT" if you want output that matches the
+// format used for the InvenSense teapot demo
+//#define OUTPUT_TEAPOT
+
 
 // MPU control/status vars
 bool dmpReady = false;  // set true if DMP init was successful
@@ -80,7 +141,7 @@ uint8_t fifoBuffer[64]; // FIFO storage buffer
 // orientation/motion vars
 Quaternion q;           // [w, x, y, z]         quaternion container
 
-/* //possibly unneeded.
+//possibly unneeded.
 VectorInt16 aa;         // [x, y, z]            accel sensor measurements
 VectorInt16 aaReal;     // [x, y, z]            gravity-free accel sensor measurements
 VectorInt16 aaWorld;    // [x, y, z]            world-frame accel sensor measurements
@@ -89,8 +150,8 @@ float euler[3];         // [psi, theta, phi]    Euler angle container
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 
 // packet structure for InvenSense teapot demo
-uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
-*/
+//uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
+
 
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
@@ -103,8 +164,10 @@ void dmpDataReady() {
 
 
 
-// SETUP
-//************************************************************
+// ================================================================
+// ===                      INITIAL SETUP                       ===
+// ================================================================
+
 void setup() {
     // join I2C bus (I2Cdev library doesn't do this automatically)
     #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
@@ -118,7 +181,8 @@ void setup() {
     // (115200 chosen because it is required for Teapot Demo output, but it's
     // really up to you depending on your project)
     Serial.begin(baud_rate);
-    //We remove this line, so that it will start up on battery
+    
+    //VARBIS: We remove this line, so that it will start up on battery
     //while (!Serial); // wait for Leonardo enumeration, others continue immediately
 
     // NOTE: 8MHz or slower host processors, like the Teensy @ 3.3V or Arduino
@@ -136,7 +200,7 @@ void setup() {
     Serial.println(F("Testing device connections..."));
     Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
 
-    // wait for ready removed to speedup startup.
+    //VARBIS: wait for ready removed to enable wireless startup.
     /*Serial.println(F("\nSend any character to begin DMP programming and demo: "));
     while (Serial.available() && Serial.read()); // empty buffer
     while (!Serial.available());                 // wait for data
@@ -195,7 +259,6 @@ void setup() {
 }
 
 
-//************************************************************
 // ================================================================
 // ===                    MAIN PROGRAM LOOP                     ===
 // ================================================================
@@ -218,7 +281,7 @@ void loop() {
           fifoCount = mpu.getFIFOCount();
         }  
 
-
+        //Parse incomming UDP packets once caught up on FIFO reads.
         int packetSize = Udp.parsePacket(); // Triggered when receiving a UDP packet from the computer
         if (packetSize){
             PacketHandler();  
@@ -251,33 +314,12 @@ void loop() {
         // track FIFO count here in case there is > 1 packet available
         // (this lets us immediately read more without waiting for an interrupt)
         fifoCount -= packetSize;
-
-      
-        #ifdef OUTPUT_READABLE_QUATERNION
-        
-        #endif
         
         //OUTPUT 
         if (Udp.remoteIP())                          // Start sending the sensor values when we know the IP Address of the computer.
-        {    
-          #ifdef OUTPUT_READABLE_QUATERNION
-              // display quaternion values in easy matrix form: w x y z
-              mpu.dmpGetQuaternion(&q, fifoBuffer);
-              msg.beginMessage("quat");
-              Serial.print("Sending over WIFI:\t");
-              msg.addArgFloat(q.w);
-              Serial.print(q.w);
-              Serial.print("\t");
-              msg.addArgFloat(q.x);
-              Serial.print(q.x);
-              Serial.print("\t");
-              msg.addArgFloat(q.y);
-              Serial.print(q.y);
-              Serial.print("\t");
-              msg.addArgFloat(q.z);
-              Serial.println(q.z);
-          #endif
-
+        {
+          readGyroData(); //prepare and append gyro data in the required format to the UDP message
+             
           sendUDP();
           //TODO, fine-tune delay (if nessesary) to prevent network congestion while guaranteeing timely reads from the buffer.
           //delay(50); causes issues reading from the FIFO buffer (6 reads before overflow)
@@ -290,7 +332,10 @@ void loop() {
 }
 
 
-//************************************************************
+// ================================================================
+// ===                    WIRELESS HELPERS                      ===
+// ================================================================
+
 void PacketHandler() {
     Serial.print("Received packet of size ");
     Serial.println(packetSize);
@@ -366,7 +411,7 @@ void connectToWifi() {
     Serial.println(ssid);
     
     WiFi.begin(ssid, pass);                   // Connect to WPA/WPA2 network. Change this line if using open or WEP network:
-    //WiFi.config(ip);                          
+    //WiFi.config(ip); //TODO debug this! Static IP address causes issues handshaking?                       
     blinkLED();
   }
   
@@ -379,7 +424,6 @@ void connectToWifi() {
   
   Udp.begin(localPort);
 }
-
 
 //************************************************************
 /*void checkBattery(){
@@ -405,6 +449,7 @@ void connectToWifi() {
   digitalWrite(pin_Out_BattSwitch, LOW);
 }*/
 
+//************************************************************
 void checkSignalStrength() {
   Serial.print("Signal Strength: ");
   Serial.println(WiFi.RSSI());
@@ -420,6 +465,8 @@ void checkSignalStrength() {
   
 }
 
+
+//************************************************************
 void sendConnectedMSG() {
   OSCMessage connectedMSG;
   connectedMSG.beginMessage("wmmsgreceived");
@@ -433,9 +480,119 @@ void sendConnectedMSG() {
 }
 
 //************************************************************
-void read_gyro(){
+void readGyroData(){
+  Serial.print("Sending over WIFI:\t");
   //TODO, refactor MPU reads into helper?
+  #ifdef OUTPUT_READABLE_QUATERNION
+      // display quaternion values in easy matrix form: w x y z
+      mpu.dmpGetQuaternion(&q, fifoBuffer);
+      
+      msg.beginMessage("quat");
+      Serial.print("quat\t");
+      msg.addArgFloat(q.w);
+      Serial.print(q.w);
+      Serial.print("\t");
+      msg.addArgFloat(q.x);
+      Serial.print(q.x);
+      Serial.print("\t");
+      msg.addArgFloat(q.y);
+      Serial.print(q.y);
+      Serial.print("\t");
+      msg.addArgFloat(q.z);
+      Serial.println(q.z);
+  #endif
+
+  #ifdef OUTPUT_READABLE_YAWPITCHROLL
+      // display Euler angles in degrees
+      mpu.dmpGetQuaternion(&q, fifoBuffer);
+      mpu.dmpGetGravity(&gravity, &q);
+      mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+      
+      msg.beginMessage("ypr");
+      Serial.print("ypr\t");
+      msg.addArgFloat(ypr[0] * 180/M_PI);
+      Serial.print(ypr[0] * 180/M_PI);
+      Serial.print("\t");
+      msg.addArgFloat(ypr[1] * 180/M_PI);
+      Serial.print(ypr[1] * 180/M_PI);
+      Serial.print("\t");
+      msg.addArgFloat(ypr[2] * 180/M_PI);
+      Serial.println(ypr[2] * 180/M_PI);
+  #endif
+
+  #ifdef OUTPUT_READABLE_EULER
+      // display Euler angles in degrees
+      mpu.dmpGetQuaternion(&q, fifoBuffer);
+      mpu.dmpGetEuler(euler, &q);
+      Serial.print("euler\t");
+      Serial.print(euler[0] * 180/M_PI);
+      Serial.print("\t");
+      Serial.print(euler[1] * 180/M_PI);
+      Serial.print("\t");
+      Serial.println(euler[2] * 180/M_PI);
+
+      msg.beginMessage("euler");
+      msg.addArgFloat(euler[0] * 180/M_PI);
+      msg.addArgFloat(euler[1] * 180/M_PI);
+      msg.addArgFloat(euler[2] * 180/M_PI);
+  #endif
+
+  #ifdef OUTPUT_READABLE_REALACCEL
+      // display real acceleration, adjusted to remove gravity
+      mpu.dmpGetQuaternion(&q, fifoBuffer);
+      mpu.dmpGetAccel(&aa, fifoBuffer);
+      mpu.dmpGetGravity(&gravity, &q);
+      mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
+      Serial.print("areal\t");
+      Serial.print(aaReal.x);
+      Serial.print("\t");
+      Serial.print(aaReal.y);
+      Serial.print("\t");
+      Serial.println(aaReal.z);
+
+      msg.beginMessage("areal");
+      msg.addArgFloat(aaReal.x);
+      msg.addArgFloat(aaReal.y);
+      msg.addArgFloat(aaReal.z);
+  #endif
+
+  #ifdef OUTPUT_READABLE_WORLDACCEL
+      // display initial world-frame acceleration, adjusted to remove gravity
+      // and rotated based on known orientation from quaternion
+      mpu.dmpGetQuaternion(&q, fifoBuffer);
+      mpu.dmpGetAccel(&aa, fifoBuffer);
+      mpu.dmpGetGravity(&gravity, &q);
+      mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
+      mpu.dmpGetLinearAccelInWorld(&aaWorld, &aaReal, &q);
+      Serial.print("aworld\t");
+      Serial.print(aaWorld.x);
+      Serial.print("\t");
+      Serial.print(aaWorld.y);
+      Serial.print("\t");
+      Serial.println(aaWorld.z);
+
+      msg.beginMessage("aworld");
+      msg.addArgFloat(aaWorld.x);
+      msg.addArgFloat(aaWorld.y);
+      msg.addArgFloat(aaWorld.z);
+  #endif
+
+  #ifdef OUTPUT_TEAPOT
+      // display quaternion values in InvenSense Teapot demo format:
+      teapotPacket[2] = fifoBuffer[0];
+      teapotPacket[3] = fifoBuffer[1];
+      teapotPacket[4] = fifoBuffer[4];
+      teapotPacket[5] = fifoBuffer[5];
+      teapotPacket[6] = fifoBuffer[8];
+      teapotPacket[7] = fifoBuffer[9];
+      teapotPacket[8] = fifoBuffer[12];
+      teapotPacket[9] = fifoBuffer[13];
+      Serial.write(teapotPacket, 14);
+      teapotPacket[11]++; // packetCount, loops at 0xFF on purpose
+
+      //NOT supported over WIFI
+  #endif
   
-  }
+}
 
 
